@@ -12,7 +12,8 @@ const YYYYMMDDdd_FORMAT = "YYYY年MM月DD日(ddd)";
 
 const ssm = new AWS.SSM();
 
-type dateType = 'today' | 'tomorrow';
+const validInputDateType = ['today', 'tomorrow'] as const;
+type dateType = typeof validInputDateType[number];
 
 // SSM ParameterStoreから値を取得する
 const getSSMParameter = async (name: string) => {
@@ -94,7 +95,7 @@ const generateText = (date: dayjs.Dayjs, type: dateType, garbageNames: string[])
 
 // LINEに翌日回収されるゴミの種類をリマインドする
 export const handler = async (event: any, context: any, callback: any) => {
-  if (! event.date) return;
+  if (! event.date || ! validInputDateType.includes(event.date)) return;
 
   // Amazon EventBridgeで渡されるJSONパラメータ
   const dateType: dateType = event.date;
@@ -109,12 +110,10 @@ export const handler = async (event: any, context: any, callback: any) => {
     channelAccessToken: LINE_ACCESS_KEY
   });
 
-  const date = dayjs().tz('Asia/Tokyo'); // today
-  if (dateType === 'tomorrow') date.add(1, 'day');
+  let date = dayjs().tz('Asia/Tokyo'); // today
+  if (dateType === 'tomorrow') date = date.add(1, 'day');
 
   const garbageNames = getGarbageNames(date);
-
-
 
   const messages: line.Message[] = [
     {
