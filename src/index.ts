@@ -12,6 +12,8 @@ const YYYYMMDDdd_FORMAT = "YYYY年MM月DD日(ddd)";
 
 const ssm = new AWS.SSM();
 
+type dateType = 'today' | 'tomorrow';
+
 // SSM ParameterStoreから値を取得する
 const getSSMParameter = async (name: string) => {
   const request = {
@@ -81,31 +83,45 @@ const getGarbageNames = (date: dayjs.Dayjs) => {
 }
 
 // メッセージを生成
-const generateText = (date: dayjs.Dayjs, garbageNames: string[]) => {
-  return date.format(YYYYMMDDdd_FORMAT) + 'に回収されるゴミは、\n' + garbageNames.map(name => '「' + name + '」').join('と') + 'です！';
+const generateText = (date: dayjs.Dayjs, type: dateType, garbageNames: string[]) => {
+  const translation = {
+    'today': '今日',
+    'tomorrow': '明日'
+  }
+
+  return translation[type] + date.format(YYYYMMDDdd_FORMAT) + 'に回収されるゴミは、\n' + garbageNames.map(name => '「' + name + '」').join('と') + 'です！';
 }
 
 // LINEに翌日回収されるゴミの種類をリマインドする
 export const handler = async (event: any, context: any, callback: any) => {
+  if (! event.date) return;
+
+  // Amazon EventBridgeで渡されるJSONパラメータ
+  const dateType: dateType = event.date;
+
   // SSMパラメータストアからLINEのアクセスキーを取得
   const LINE_ACCESS_KEY = await getSSMParameter('LINE_ACCESS_KEY');
-  const USER_ID = await getSSMParameter('USER_ID');
+  const LINE_USER_ID = await getSSMParameter('LINE_USER_ID');
 
-  if (! (LINE_ACCESS_KEY && USER_ID)) return;
+  if (! (LINE_ACCESS_KEY && LINE_USER_ID)) return;
 
   const client = new line.Client({
     channelAccessToken: LINE_ACCESS_KEY
   });
 
-  const tomorrow = dayjs().tz('Asia/Tokyo').add(1, 'day');
-  const garbageNames = getGarbageNames(tomorrow);
+  const date = dayjs().tz('Asia/Tokyo'); // today
+  if (dateType === 'tomorrow') date.add(1, 'day');
+
+  const garbageNames = getGarbageNames(date);
+
+
 
   const messages: line.Message[] = [
     {
       type: 'text',
-      text: generateText(tomorrow, garbageNames)
+      text: generateText(date, dateType, garbageNames)
     }
   ];
 
-  await client.pushMessage(USER_ID, messages);
+  await client.pushMessage(LINE_USER_ID, messages);
 };
